@@ -560,7 +560,7 @@ def main():
     # 설정
     MAX_RESULTS_PER_KEYWORD = 50  # 키워드당 50개
     KOREAN_ONLY = True
-    ORDER = 'date'  # 최신순
+    ORDER = 'relevance'  # 관련성순
     CONTACTABLE_ONLY = True  # 연락처 있는 것만
     
     print("="*60)
