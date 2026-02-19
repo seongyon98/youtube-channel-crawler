@@ -8,7 +8,7 @@ from googleapiclient.errors import HttpError
 import json
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 
@@ -238,6 +238,43 @@ class YouTubeChannelCrawler:
             print(f"✗ API 오류 발생: {e}")
             return [], None
     
+    def get_last_upload_date(self, channel_id, channel_data):
+        """
+        채널의 최근 업로드 영상 날짜 가져오기
+        
+        Args:
+            channel_id (str): 채널 ID
+            channel_data (dict): 채널 정보 (이미 가져온 경우)
+        
+        Returns:
+            str: 최근 업로드 날짜 (ISO 8601 형식) 또는 None
+        """
+        try:
+            # uploads 플레이리스트 ID 가져오기
+            content_details = channel_data.get('contentDetails', {})
+            related_playlists = content_details.get('relatedPlaylists', {})
+            uploads_playlist_id = related_playlists.get('uploads')
+            
+            if not uploads_playlist_id:
+                return None
+            
+            # 최신 업로드 영상 1개 가져오기
+            playlist_response = self.youtube.playlistItems().list(
+                part='snippet',
+                playlistId=uploads_playlist_id,
+                maxResults=1
+            ).execute()
+            
+            items = playlist_response.get('items', [])
+            if items:
+                return items[0]['snippet']['publishedAt']
+            
+            return None
+            
+        except HttpError as e:
+            # 에러 발생 시 None 반환 (필수 정보는 아니므로)
+            return None
+    
     def get_channel_details(self, channel_id):
         """
         채널 상세 정보 가져오기
@@ -259,6 +296,9 @@ class YouTubeChannelCrawler:
                 return None
             
             channel = channel_response['items'][0]
+            
+            # 최근 업로드일 가져오기
+            last_upload_date = self.get_last_upload_date(channel_id, channel)
             
             # 채널 정보 추출
             snippet = channel['snippet']
@@ -282,6 +322,7 @@ class YouTubeChannelCrawler:
                 'description': description,
                 'custom_url': snippet.get('customUrl', ''),
                 'published_at': snippet['publishedAt'],
+                'last_upload_date': last_upload_date,
                 'country': snippet.get('country', 'N/A'),
                 'is_korean': is_korean,
                 
@@ -319,7 +360,8 @@ class YouTubeChannelCrawler:
             return None
     
     def crawl(self, query, max_results=10, korean_only=True, order='relevance', 
-              data_file=None, update_mode=True, contactable_only=True):
+              data_file=None, update_mode=True, contactable_only=True,
+              channel_age_months=None, last_upload_months=None):
         """
         검색어로 채널을 검색하고 상세 정보 수집
         
@@ -331,6 +373,8 @@ class YouTubeChannelCrawler:
             data_file (str): 데이터를 저장/로드할 JSON 파일명 (None이면 검색어로 자동 생성)
             update_mode (bool): True면 기존 파일에 추가, False면 새로 생성
             contactable_only (bool): True면 연락처 있는 채널만 수집 (기본값: True)
+            channel_age_months (int): 채널 개설 기간 제한 (개월, None이면 제한 없음)
+            last_upload_months (int): 최근 업로드 기간 제한 (개월, None이면 제한 없음)
         
         Returns:
             tuple: (channels 리스트, 사용된 파일명)
@@ -347,6 +391,10 @@ class YouTubeChannelCrawler:
             print("🇰🇷 한국 채널만 필터링")
         if contactable_only:
             print("📧 연락처 있는 채널만 수집")
+        if channel_age_months:
+            print(f"📅 채널 개설 {channel_age_months}개월 이내만")
+        if last_upload_months:
+            print(f"🎬 최근 {last_upload_months}개월 이내 활동 채널만")
         
         order_text = {
             'relevance': '관련성순',
@@ -366,9 +414,18 @@ class YouTubeChannelCrawler:
         duplicate_count = 0
         filtered_count = 0
         no_contact_count = 0  # 연락처 없음 카운트
+        old_channel_count = 0  # 채널 개설 오래됨
+        inactive_channel_count = 0  # 최근 활동 없음
         page_token = None
         search_count = 0
-        max_search_attempts = 10  # 최대 10번까지 추가 검색
+        max_search_attempts = 5  # 최대 5번까지 추가 검색
+        
+        # 기간 계산
+        now = datetime.now()
+        if channel_age_months:
+            channel_age_cutoff = now - timedelta(days=channel_age_months * 30)
+        if last_upload_months:
+            last_upload_cutoff = now - timedelta(days=last_upload_months * 30)
         
         # 목표 개수를 채울 때까지 반복 검색
         while len(new_channels) < max_results and search_count < max_search_attempts:
@@ -426,6 +483,34 @@ class YouTubeChannelCrawler:
                         filtered_count += 1
                         continue
                     
+                    # 채널 개설일 필터링
+                    if channel_age_months:
+                        try:
+                            published_date = datetime.fromisoformat(details['published_at'].replace('Z', '+00:00'))
+                            if published_date < channel_age_cutoff:
+                                print(f"  ⊝ 채널 개설 {channel_age_months}개월 초과 - 제외")
+                                old_channel_count += 1
+                                continue
+                        except:
+                            pass  # 날짜 파싱 실패 시 무시
+                    
+                    # 최근 업로드일 필터링
+                    if last_upload_months:
+                        last_upload = details.get('last_upload_date')
+                        if not last_upload:
+                            print(f"  ⊝ 업로드 영상 없음 - 제외")
+                            inactive_channel_count += 1
+                            continue
+                        
+                        try:
+                            last_upload_date = datetime.fromisoformat(last_upload.replace('Z', '+00:00'))
+                            if last_upload_date < last_upload_cutoff:
+                                print(f"  ⊝ 최근 {last_upload_months}개월간 활동 없음 - 제외")
+                                inactive_channel_count += 1
+                                continue
+                        except:
+                            pass  # 날짜 파싱 실패 시 무시
+                    
                     # 연락처 필터링
                     if contactable_only and not details['contactable']:
                         print(f"  ⊝ 연락처 없음 - 제외")
@@ -463,6 +548,10 @@ class YouTubeChannelCrawler:
             print(f"ℹ️  중복 채널 제외: {duplicate_count}개")
         if korean_only and filtered_count > 0:
             print(f"ℹ️  한국 채널 아님으로 제외: {filtered_count}개")
+        if channel_age_months and old_channel_count > 0:
+            print(f"ℹ️  채널 개설 오래됨으로 제외: {old_channel_count}개")
+        if last_upload_months and inactive_channel_count > 0:
+            print(f"ℹ️  최근 활동 없음으로 제외: {inactive_channel_count}개")
         if contactable_only and no_contact_count > 0:
             print(f"ℹ️  연락처 없음으로 제외: {no_contact_count}개")
         
@@ -562,6 +651,8 @@ def main():
     KOREAN_ONLY = True
     ORDER = 'relevance'  # 관련성순
     CONTACTABLE_ONLY = True  # 연락처 있는 것만
+    CHANNEL_AGE_MONTHS = None  # 채널 개설 기간 제한 (None = 제한 없음, 예: 12 = 1년 이내)
+    LAST_UPLOAD_MONTHS = 6  # 최근 업로드 기간 제한 (None = 제한 없음, 6 = 6개월 이내)
     
     print("="*60)
     print("🎯 YouTube 채널 자동 수집 시작")
@@ -571,7 +662,11 @@ def main():
     print(f"🎯 키워드당 목표: {MAX_RESULTS_PER_KEYWORD}개")
     print(f"🇰🇷 한국 채널만: {'예' if KOREAN_ONLY else '아니오'}")
     print(f"📧 연락처 필수: {'예' if CONTACTABLE_ONLY else '아니오'}")
-    print(f"📊 정렬: 최신순")
+    if CHANNEL_AGE_MONTHS:
+        print(f"📅 채널 개설: {CHANNEL_AGE_MONTHS}개월 이내")
+    if LAST_UPLOAD_MONTHS:
+        print(f"🎬 최근 활동: {LAST_UPLOAD_MONTHS}개월 이내")
+    print(f"📊 정렬: 관련성순")
     print("="*60)
     print("\n키워드 목록:")
     for i, keyword in enumerate(keywords, 1):
@@ -600,7 +695,9 @@ def main():
                 order=ORDER,
                 data_file=None,  # 자동 생성
                 update_mode=True,
-                contactable_only=CONTACTABLE_ONLY
+                contactable_only=CONTACTABLE_ONLY,
+                channel_age_months=CHANNEL_AGE_MONTHS,
+                last_upload_months=LAST_UPLOAD_MONTHS
             )
             
             # JSON 파일로 저장
