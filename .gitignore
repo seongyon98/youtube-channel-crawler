@@ -13,8 +13,6 @@ env/
 ENV/
 
 # 크롤링 결과 파일
-*.json
-*.csv
 !.env.example
 
 # IDE 설정
