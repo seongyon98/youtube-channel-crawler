@@ -368,7 +368,7 @@ class YouTubeChannelCrawler:
         no_contact_count = 0  # 연락처 없음 카운트
         page_token = None
         search_count = 0
-        max_search_attempts = 5  # 최대 5번까지 추가 검색
+        max_search_attempts = 10  # 최대 10번까지 추가 검색
         
         # 목표 개수를 채울 때까지 반복 검색
         while len(new_channels) < max_results and search_count < max_search_attempts:
