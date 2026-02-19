@@ -27,3 +27,6 @@ ENV/
 # OS 관련
 .DS_Store
 Thumbs.db
+
+# 키워드 파일
+.txt

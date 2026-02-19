@@ -368,7 +368,7 @@ class YouTubeChannelCrawler:
         no_contact_count = 0  # 연락처 없음 카운트
         page_token = None
         search_count = 0
-        max_search_attempts = 10  # 최대 10번까지 추가 검색
+        max_search_attempts = 5  # 최대 5번까지 추가 검색
         
         # 목표 개수를 채울 때까지 반복 검색
         while len(new_channels) < max_results and search_count < max_search_attempts:
@@ -499,7 +499,7 @@ class YouTubeChannelCrawler:
 
 def main():
     """
-    사용 예제
+    키워드 파일 기반 자동 수집
     """
     # .env 파일에서 환경 변수 로드
     load_dotenv()
@@ -514,101 +514,161 @@ def main():
         print("\n💡 API 키 발급 방법은 README.md를 참고하세요.")
         return
     
+    # 키워드 파일 경로
+    KEYWORDS_FILE = 'keywords.txt'
+    
+    # 키워드 파일 존재 확인
+    if not os.path.exists(KEYWORDS_FILE):
+        print(f"⚠️  오류: {KEYWORDS_FILE} 파일이 없습니다!")
+        print("\n📝 keywords.txt 파일을 생성하고 다음과 같이 키워드를 입력하세요:")
+        print("   (한 줄에 하나씩)")
+        print("\n예시:")
+        print("   파이썬")
+        print("   요리")
+        print("   게임")
+        print("   영어공부")
+        print("\n파일을 생성한 후 다시 실행해주세요.")
+        
+        # 예시 파일 자동 생성
+        try:
+            with open(KEYWORDS_FILE, 'w', encoding='utf-8') as f:
+                f.write("파이썬\n요리\n게임\n")
+            print(f"\n✅ 예시 파일({KEYWORDS_FILE})을 생성했습니다!")
+            print("   파일을 수정한 후 다시 실행하세요.")
+        except Exception as e:
+            print(f"\n❌ 파일 생성 실패: {e}")
+        
+        return
+    
+    # 키워드 파일 읽기
+    try:
+        with open(KEYWORDS_FILE, 'r', encoding='utf-8') as f:
+            keywords = [line.strip() for line in f if line.strip()]
+        
+        if not keywords:
+            print(f"⚠️  오류: {KEYWORDS_FILE} 파일이 비어있습니다!")
+            print("키워드를 입력한 후 다시 실행하세요.")
+            return
+            
+    except Exception as e:
+        print(f"⚠️  파일 읽기 오류: {e}")
+        return
+    
     # 크롤러 초기화
     crawler = YouTubeChannelCrawler(API_KEY)
     
+    # 설정
+    MAX_RESULTS_PER_KEYWORD = 50  # 키워드당 50개
+    KOREAN_ONLY = True
+    ORDER = 'date'  # 최신순
+    CONTACTABLE_ONLY = True  # 연락처 있는 것만
+    
     print("="*60)
-    print("🎯 YouTube 채널 크롤러 (검색어별 자동 분류)")
+    print("🎯 YouTube 채널 자동 수집 시작")
     print("="*60)
+    print(f"📋 키워드 파일: {KEYWORDS_FILE}")
+    print(f"📊 총 키워드 수: {len(keywords)}개")
+    print(f"🎯 키워드당 목표: {MAX_RESULTS_PER_KEYWORD}개")
+    print(f"🇰🇷 한국 채널만: {'예' if KOREAN_ONLY else '아니오'}")
+    print(f"📧 연락처 필수: {'예' if CONTACTABLE_ONLY else '아니오'}")
+    print(f"📊 정렬: 최신순")
+    print("="*60)
+    print("\n키워드 목록:")
+    for i, keyword in enumerate(keywords, 1):
+        print(f"  {i}. {keyword}")
+    print("\n" + "="*60)
     
-    # 검색어 입력
-    search_query = input("\n검색어를 입력하세요: ")
-    max_results = int(input("최대 결과 수 (기본값 10): ") or "10")
+    input("\n계속하려면 Enter를 누르세요... (Ctrl+C로 취소)")
     
-    # 한국 채널만 필터링 여부
-    korean_only_input = input("한국 채널만 검색하시겠습니까? (Y/n): ").strip().lower()
-    korean_only = korean_only_input != 'n'
+    # 전체 수집 통계
+    total_collected = 0
+    total_failed = 0
+    results_summary = []
     
-    # 정렬 방식 선택
-    print("\n정렬 방식을 선택하세요:")
-    print("  1. 관련성순 (기본값)")
-    print("  2. 최신순")
-    print("  3. 조회수순")
-    order_choice = input("선택 (1/2/3): ").strip() or "1"
-    
-    order_map = {
-        '1': 'relevance',
-        '2': 'date',
-        '3': 'viewCount'
-    }
-    order = order_map.get(order_choice, 'relevance')
-    
-    # 채널 정보 크롤링 (파일명 자동 생성)
-    channels, data_file = crawler.crawl(
-        search_query, 
-        max_results=max_results, 
-        korean_only=korean_only,
-        order=order,
-        data_file=None,  # None으로 설정하면 검색어로 자동 생성
-        update_mode=True  # 항상 업데이트 모드
-    )
-    
-    if channels:
-        # JSON 파일로 저장 (기존 데이터 + 새 데이터)
-        crawler.save_to_json(channels, data_file)
+    # 각 키워드별로 수집
+    for idx, keyword in enumerate(keywords, 1):
+        print(f"\n\n{'#'*60}")
+        print(f"# 진행: {idx}/{len(keywords)} - '{keyword}'")
+        print(f"{'#'*60}\n")
         
-        # 결과 미리보기
-        print("\n" + "="*60)
-        print("📋 수집된 채널 정보 (최근 3개):")
-        print("="*60 + "\n")
-        
-        # 최근 추가된 것부터 보여주기
-        for i, channel in enumerate(channels[-3:], 1):
-            print(f"\n[채널 {i}]")
-            print(f"  제목: {channel['title']}")
-            print(f"  국가: {channel['country']} {'🇰🇷' if channel['is_korean'] else ''}")
-            print(f"  URL: {channel['channel_url']}")
-            print(f"  구독자: {channel['subscriber_count']}")
-            print(f"  동영상 수: {channel['video_count']}")
+        try:
+            # 채널 정보 크롤링
+            channels, data_file = crawler.crawl(
+                keyword,
+                max_results=MAX_RESULTS_PER_KEYWORD,
+                korean_only=KOREAN_ONLY,
+                order=ORDER,
+                data_file=None,  # 자동 생성
+                update_mode=True,
+                contactable_only=CONTACTABLE_ONLY
+            )
             
-            # 연락처 정보
-            print(f"\n  📧 연락처 정보:")
-            if channel['email'] != 'N/A':
-                print(f"     이메일: {channel['email']}")
-            if channel['phone'] != 'N/A':
-                print(f"     전화: {channel['phone']}")
-            if channel['kakao'] != 'N/A':
-                print(f"     카카오톡: {channel['kakao']}")
-            if channel['other_links'] != 'N/A':
-                print(f"     기타: {channel['other_links'][:80]}...")
+            # JSON 파일로 저장
+            crawler.save_to_json(channels, data_file)
             
-            if not channel['contactable']:
-                print(f"     ⚠️  연락처 정보 없음")
+            # 새로 추가된 채널 수 계산 (전체에서 기존 데이터 제외)
+            new_count = len([ch for ch in channels if ch.get('channel_id')])
+            
+            # 통계 저장
+            result = {
+                'keyword': keyword,
+                'file': data_file,
+                'total': len(channels),
+                'new': new_count,
+                'contactable': sum(1 for ch in channels if ch.get('contactable'))
+            }
+            results_summary.append(result)
+            total_collected += new_count
+            
+            print(f"\n✅ '{keyword}' 완료!")
+            print(f"   파일: {data_file}")
+            print(f"   수집: {len(channels)}개 (전체)")
+            
+        except Exception as e:
+            print(f"\n❌ '{keyword}' 실패: {e}")
+            total_failed += 1
+            results_summary.append({
+                'keyword': keyword,
+                'file': None,
+                'total': 0,
+                'new': 0,
+                'contactable': 0,
+                'error': str(e)
+            })
         
-        # 통계 요약
-        print("\n" + "="*60)
-        print("📊 전체 통계")
-        print("="*60)
-        contactable = [ch for ch in channels if ch['contactable']]
-        print(f"총 채널 수: {len(channels)}개")
-        print(f"연락 가능 채널: {len(contactable)}개 ({len(contactable)/len(channels)*100:.1f}%)")
-        
-        # 연락 방법별 통계
-        email_count = sum(1 for ch in channels if ch['email'] != 'N/A')
-        phone_count = sum(1 for ch in channels if ch['phone'] != 'N/A')
-        kakao_count = sum(1 for ch in channels if ch['kakao'] != 'N/A')
-        other_count = sum(1 for ch in channels if ch['other_links'] != 'N/A')
-        
-        print(f"\n연락 방법별:")
-        print(f"  이메일: {email_count}개")
-        print(f"  전화번호: {phone_count}개")
-        print(f"  카카오톡: {kakao_count}개")
-        print(f"  기타 링크: {other_count}개")
-        
-        print(f"\n💾 데이터 파일: {data_file}")
-        print(f"💡 같은 검색어로 다시 실행하면 새로운 채널만 추가됩니다!")
-    else:
-        print("\n⚠️  새로 추가된 채널이 없습니다.")
+        # 마지막 키워드가 아니면 잠시 대기
+        if idx < len(keywords):
+            print(f"\n⏳ 다음 키워드로 이동... (잠시 대기)")
+            import time
+            time.sleep(2)
+    
+    # 최종 결과 요약
+    print("\n\n" + "="*60)
+    print("🎉 전체 수집 완료!")
+    print("="*60)
+    print(f"\n📊 최종 통계:")
+    print(f"   처리한 키워드: {len(keywords)}개")
+    print(f"   성공: {len(keywords) - total_failed}개")
+    print(f"   실패: {total_failed}개")
+    
+    print(f"\n📋 키워드별 결과:")
+    print("-" * 60)
+    for i, result in enumerate(results_summary, 1):
+        if 'error' in result:
+            print(f"{i:2d}. {result['keyword']:20s} - ❌ 실패")
+        else:
+            print(f"{i:2d}. {result['keyword']:20s} - ✅ {result['total']:3d}개 채널")
+            print(f"    └─ 파일: {result['file']}")
+    
+    print("\n" + "="*60)
+    print("💾 생성된 파일들:")
+    print("-" * 60)
+    for result in results_summary:
+        if result['file']:
+            print(f"   • {result['file']}")
+    
+    print("\n✨ 모든 작업이 완료되었습니다!")
+    print("="*60)
 
 
 if __name__ == '__main__':
