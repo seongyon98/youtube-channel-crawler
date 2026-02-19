@@ -1,0 +1,29 @@
+# 환경 변수 파일 (API 키 보호)
+.env
+
+# Python 캐시
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 가상 환경
+venv/
+env/
+ENV/
+
+# 크롤링 결과 파일
+*.json
+*.csv
+!.env.example
+
+# IDE 설정
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS 관련
+.DS_Store
+Thumbs.db
