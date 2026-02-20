@@ -26,5 +26,3 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# 키워드 파일
-*.txt

@@ -67,22 +67,11 @@ YOUTUBE_API_KEY=여기에_발급받은_API_키_입력
 
 **예시:**
 ```
-YOUTUBE_API_KEY=AIzaSyABC123def456GHI789jkl012MNO345pqr
+YOUTUBE_API_KEY=이곳에 복사한 API 키 붙여넣기
 ```
 
-### 3. 키워드 파일 생성
 
-`keywords.txt` 파일을 만들고 수집할 키워드 입력 (한 줄에 하나씩):
-
-```
-파이썬
-요리
-게임
-영어공부
-운동
-```
-
-### 4. 실행
+### 3. 실행
 
 ```bash
 python youtube_channel_crawler.py
