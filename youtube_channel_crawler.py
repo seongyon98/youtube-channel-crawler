@@ -62,6 +62,9 @@ class YouTubeChannelCrawler:
         Returns:
             str: 안전한 파일명
         """
+        # 현재 날짜를 YYMMDD 형식으로
+        date_prefix = datetime.now().strftime('%y%m%d')
+        
         # 파일명에 사용할 수 없는 문자 제거
         safe_query = re.sub(r'[<>:"/\\|?*]', '', query)
         # 공백을 언더스코어로 변환
@@ -69,7 +72,7 @@ class YouTubeChannelCrawler:
         # 최대 50자로 제한
         safe_query = safe_query[:50]
         
-        return f"youtube_channels_{safe_query}.json"
+        return f"{date_prefix}_youtube_channels_{safe_query}.json"
     
     @staticmethod
     def extract_email(text):
@@ -651,7 +654,7 @@ def main():
     KOREAN_ONLY = True
     ORDER = 'relevance'  # 관련성순
     CONTACTABLE_ONLY = True  # 연락처 있는 것만
-    CHANNEL_AGE_MONTHS = None  # 채널 개설 기간 제한 (None = 제한 없음, 예: 12 = 1년 이내)
+    CHANNEL_AGE_MONTHS = 12  # 채널 개설 기간 제한 (None = 제한 없음, 예: 12 = 1년 이내)
     LAST_UPLOAD_MONTHS = 6  # 최근 업로드 기간 제한 (None = 제한 없음, 6 = 6개월 이내)
     
     print("="*60)
