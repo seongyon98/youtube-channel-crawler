@@ -1,0 +1,24 @@
+[
+  {
+    "_주석": "제외 명단 원본 파일의 형식 예시입니다. 실제 데이터가 아닙니다.",
+    "_사용법": "이 폴더에 실제 리스트(.json 또는 .xlsx)를 넣고 `python tools/build_exclusion.py` 를 실행하면 data/excluded_channels.json 이 생성됩니다.",
+    "_인식열": "channel_id / title(채널명) / custom_url·channel_url(핸들·주소) / email  — 넷 중 하나만 있어도 됩니다."
+  },
+  {
+    "title": "예시 채널 A",
+    "channel_id": "UC0000000000000000000000",
+    "custom_url": "@example_channel_a",
+    "email": "example-a@example.com"
+  },
+  {
+    "title": "예시 채널 B",
+    "channel_url": "https://www.youtube.com/@example_channel_b",
+    "email": "example-b@example.com"
+  },
+  {
+    "title": "예시 채널 C (채널명만 있는 경우)",
+    "channel_id": "N/A",
+    "custom_url": "N/A",
+    "email": "N/A"
+  }
+]

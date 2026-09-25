@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YouTube 채널 수집기</title>
+<style>
+  /* 밝은 테마 (기본) */
+  :root{
+    --bg:#f5f6f8; --card:#ffffff; --line:#e3e6ea; --text:#1c2024; --muted:#6b7480;
+    --accent:#3457d5; --accent-dark:#2745ad; --ok:#12805c; --warn:#b45309; --err:#c0322b;
+    --code-bg:#1e2227; --code-text:#d7dde3;
+  }
+  /* 시스템 설정이 어두울 때 (사용자가 밝게를 고르지 않은 경우에만) */
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#15181c; --card:#1d2126; --line:#2e343b; --text:#e6e9ec; --muted:#98a2ad;
+      --accent:#5878e8; --accent-dark:#4661cc; --ok:#3fbf90; --warn:#e0a33e; --err:#f0736c;
+      --code-bg:#0f1215; --code-text:#cfd6dd;
+    }
+  }
+  /* 사용자가 직접 어둡게를 고른 경우 (시스템 설정보다 우선) */
+  :root[data-theme="dark"]{
+    --bg:#15181c; --card:#1d2126; --line:#2e343b; --text:#e6e9ec; --muted:#98a2ad;
+    --accent:#5878e8; --accent-dark:#4661cc; --ok:#3fbf90; --warn:#e0a33e; --err:#f0736c;
+    --code-bg:#0f1215; --code-text:#cfd6dd;
+  }
+
+  /* 테마 선택 버튼 */
+  .themebar{display:flex; gap:0; border:1px solid var(--line); border-radius:6px;
+            overflow:hidden; background:var(--card)}
+  .themebar button{border:none; border-radius:0; padding:5px 11px; font-size:12px;
+                   font-weight:500; background:transparent; color:var(--muted)}
+  .themebar button + button{border-left:1px solid var(--line)}
+  .themebar button.on{background:var(--accent); color:#fff; font-weight:700}
+  .headrow{display:flex; align-items:flex-start; justify-content:space-between; gap:16px}
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:"Malgun Gothic","맑은 고딕",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:14px; line-height:1.65;
+  }
+  .wrap{max-width:1280px; margin:0 auto; padding:26px 22px 50px}
+
+  /* PC에서는 두 줄로 나눠 스크롤을 줄입니다.
+     왼쪽=설정(키·키워드·조건), 오른쪽=실행과 결과.
+     오른쪽은 화면에 붙어 있어 왼쪽을 만지는 동안에도 계속 보입니다. */
+  .cols{display:grid; grid-template-columns:minmax(0,1.02fr) minmax(0,0.98fr);
+        gap:16px; align-items:start}
+  .colright{position:sticky; top:18px}
+  .col > .card:last-child{margin-bottom:0}
+  @media (max-width:1080px){
+    .cols{grid-template-columns:1fr}
+    .colright{position:static}
+  }
+  header{margin-bottom:24px}
+  h1{font-size:22px; margin:0 0 6px; letter-spacing:-.3px}
+  header p{margin:0; color:var(--muted); font-size:13px}
+
+  .card{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:20px 22px; margin-bottom:16px}
+  .card h2{font-size:15px; margin:0 0 4px; display:flex; align-items:center; gap:8px}
+  .step{display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px;
+        background:var(--accent); color:#fff; border-radius:50%; font-size:12px; font-weight:700; flex:none}
+  .card .desc{color:var(--muted); font-size:12.5px; margin:0 0 16px; padding-left:30px}
+
+  label{display:block; font-size:12.5px; font-weight:600; margin:14px 0 6px}
+  input[type=text], input[type=password], textarea{
+    width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:6px;
+    background:var(--bg); color:var(--text); font-size:13px; font-family:inherit;
+  }
+  input:focus, textarea:focus{outline:2px solid var(--accent); outline-offset:-1px; border-color:transparent}
+  textarea{min-height:150px; resize:vertical; font-family:Consolas,"D2Coding",monospace; line-height:1.7}
+
+  .keyrow{display:flex; gap:8px; margin-bottom:8px; align-items:center}
+  .keyrow span{flex:none; width:22px; color:var(--muted); font-size:12px; text-align:right}
+  .keyrow input{flex:1}
+
+  button{
+    font-family:inherit; font-size:13px; font-weight:600; padding:9px 18px;
+    border-radius:6px; border:1px solid var(--line); background:var(--card); color:var(--text); cursor:pointer;
+  }
+  button:hover:not(:disabled){border-color:var(--muted)}
+  button:disabled{opacity:.45; cursor:not-allowed}
+  button.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+  button.primary:hover:not(:disabled){background:var(--accent-dark); border-color:var(--accent-dark)}
+  button.small{padding:5px 12px; font-size:12px; font-weight:500}
+  .actions{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:18px}
+
+  .msg{font-size:12.5px; padding:9px 12px; border-radius:6px; margin-top:12px; display:none}
+  .msg.show{display:block}
+  .msg.ok{background:rgba(18,128,92,.12); color:var(--ok)}
+  .msg.err{background:rgba(192,50,43,.12); color:var(--err)}
+
+  .bar{height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin:14px 0 8px}
+  .bar > i{display:block; height:100%; width:0; background:var(--accent); transition:width .3s}
+  .status{display:flex; justify-content:space-between; font-size:12.5px; color:var(--muted); margin-bottom:12px}
+
+  pre.log{
+    background:var(--code-bg); color:var(--code-text); border-radius:8px; padding:14px 16px;
+    font-family:Consolas,"D2Coding",monospace; font-size:12px; line-height:1.55;
+    height:320px; overflow:auto; margin:0; white-space:pre-wrap; word-break:break-all;
+  }
+  pre.log:empty::before{content:"실행하면 진행 상황이 여기에 표시됩니다."; color:#6b7480}
+
+  table{width:100%; border-collapse:collapse; font-size:12.5px; margin-top:12px}
+  th,td{text-align:left; padding:7px 10px; border-bottom:1px solid var(--line)}
+  th{color:var(--muted); font-weight:600; font-size:12px}
+  td.num{text-align:right; font-variant-numeric:tabular-nums; color:var(--ok); font-weight:600}
+
+  /* 연결 끊김 안내 */
+  .offline{background:var(--err); color:#fff; border-radius:8px; padding:12px 16px;
+           margin-bottom:16px; font-size:13px; line-height:1.7}
+  .offline.connecting{background:var(--card); color:var(--muted);
+                      border:1px solid var(--line)}
+  .offline.connecting b{color:var(--text)}
+  .offline.connecting .hint{color:var(--muted)}
+  .offline .hint{display:block; color:rgba(255,255,255,.85); font-size:12px; margin-top:3px}
+
+  /* 처음 사용 안내 */
+  .guide{background:linear-gradient(180deg, rgba(52,87,213,.07), transparent 60%)}
+  .guidehead{font-size:14px; font-weight:700; color:var(--text); cursor:pointer; list-style:none}
+  .guidehead::before{content:"💡 "; }
+  .gtitle{font-size:13px; font-weight:700; margin:18px 0 6px}
+  .glist{padding-left:20px; margin:0; font-size:13px; color:var(--muted)}
+  .glist li{margin:3px 0}
+  .gitems{display:grid; grid-template-columns:repeat(auto-fit, minmax(340px,1fr)); gap:4px 24px}
+  .gitem{margin:8px 0; padding-left:12px; border-left:2px solid var(--line)}
+  .gitem b{font-size:13px}
+  .gitem p{margin:3px 0 0; font-size:12.5px; color:var(--muted); line-height:1.7}
+  .gex{background:var(--bg); border-radius:5px; padding:6px 10px; margin-top:6px !important;
+       font-size:12px !important; font-family:Consolas,monospace}
+
+  /* 수집 조건 */
+  .optional{font-size:11.5px; font-weight:500; color:var(--muted); margin-left:4px}
+  .set{padding:12px 0; border-bottom:1px solid var(--line)}
+  .set:last-child{border-bottom:none}
+  .setrow{display:flex; align-items:center; gap:12px}
+  .setrow label{margin:0; flex:1; font-size:13px; font-weight:600}
+  .sethelp{font-size:12px; color:var(--muted); margin-top:4px; line-height:1.6}
+  .setval{font-variant-numeric:tabular-nums; font-weight:700; color:var(--accent);
+          font-size:13px; min-width:74px; text-align:right}
+  input[type=range]{flex:none; width:190px; accent-color:var(--accent)}
+  input[type=checkbox]{width:17px; height:17px; accent-color:var(--accent); cursor:pointer; flex:none}
+  select{padding:7px 10px; border:1px solid var(--line); border-radius:6px;
+         background:var(--bg); color:var(--text); font-family:inherit; font-size:13px}
+
+  /* 키워드 작성법 예시 (접었다 펼 수 있음 — 접힌 상태에서도 핵심 규칙은 보이도록) */
+  .howto{border:1px dashed var(--line); border-radius:8px; padding:11px 16px; margin-top:14px}
+  .howto > summary{cursor:pointer; font-size:13px; color:var(--muted); font-weight:400}
+  .howto > summary b{color:var(--text); font-size:13px}
+  .howto[open] > summary{margin-bottom:6px}
+  .howrow{display:flex; gap:14px; flex-wrap:wrap; margin:10px 0 4px}
+  .howrow > div{flex:1; min-width:190px}
+  .howto pre{background:var(--bg); border:1px solid var(--line); border-radius:6px;
+             padding:9px 12px; margin:5px 0 0; font-family:Consolas,"D2Coding",monospace;
+             font-size:12.5px; line-height:1.7; white-space:pre; overflow-x:auto}
+  .tick{font-size:12px; font-weight:700}
+  .tick.ok{color:var(--ok)}
+  .tick.no{color:var(--err)}
+  .howto ul{margin:12px 0 0; padding-left:19px; font-size:12.5px; color:var(--muted); line-height:1.8}
+  .howto code{background:var(--bg); padding:1px 5px; border-radius:4px; font-size:12px}
+
+  .group{border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-top:12px}
+  .grouphead{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px}
+  .grouphead b{font-size:13px}
+  .tag{font-size:11px; color:var(--muted); background:var(--bg); border:1px solid var(--line);
+       padding:1px 7px; border-radius:10px}
+  .cnt{font-size:12px; color:var(--muted); margin-left:auto}
+  .cnt.over{color:var(--warn); font-weight:600}
+  .group textarea{min-height:96px; margin-top:0}
+
+  .big{font-size:26px; font-weight:700; letter-spacing:-.5px}
+  .hint{font-size:12px; color:var(--muted); margin-top:8px}
+  .hint a{color:var(--accent)}
+  details{margin-top:10px; font-size:12.5px}
+  summary{cursor:pointer; color:var(--muted); font-weight:600}
+  details ol{padding-left:20px; color:var(--muted); margin:8px 0}
+  .note{border-left:3px solid var(--warn); padding:8px 12px; background:rgba(180,83,9,.08);
+        font-size:12.5px; border-radius:0 6px 6px 0; margin-top:14px}
+  footer{text-align:center; color:var(--muted); font-size:11.5px; margin-top:30px; line-height:1.8}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div id="offline" class="offline" hidden>
+    <b>프로그램과 연결이 끊겼습니다.</b>
+    프로그램을 다시 실행한 뒤, 이 페이지를 <b>새로고침(F5)</b> 해 주세요.
+    <span class="hint">프로그램이 켜져 있는데도 이 문구가 계속 보이면, 프로그램을 껐다가 다시 켜 보세요.</span>
+  </div>
+
+  <header>
+    <div class="headrow">
+      <div>
+        <h1>YouTube 채널 수집기</h1>
+        <p>키워드로 교육·강의 목적의 한국 유튜브 채널을 찾아 연락처까지 정리해 줍니다.</p>
+      </div>
+      <div class="themebar" title="화면 밝기">
+        <button type="button" id="th_auto"  onclick="setTheme('auto')">시스템</button>
+        <button type="button" id="th_light" onclick="setTheme('light')">밝게</button>
+        <button type="button" id="th_dark"  onclick="setTheme('dark')">어둡게</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 처음 사용 안내 -->
+  <section class="card guide">
+    <details open id="guideBox" ontoggle="rememberGuide()">
+      <summary class="guidehead">처음 사용하시나요? — 먼저 읽어보세요</summary>
+
+      <p class="gtitle">이 프로그램이 하는 일</p>
+      <ol class="glist">
+        <li>입력한 키워드로 유튜브에서 채널을 검색합니다.</li>
+        <li><b>한국 채널 / 강의·교육 채널 / 최근 활동 / 연락처 있음</b> 조건으로 걸러냅니다.</li>
+        <li>남은 채널의 이름·구독자수·연락처를 파일로 정리해 줍니다.</li>
+      </ol>
+
+      <p class="gtitle">시작하기 전에 꼭 알아두실 것</p>
+
+      <div class="gitems">
+      <div class="gitem">
+        <b>1. YouTube API 키가 반드시 필요합니다 (무료)</b>
+        <p>구글 계정 하나당 키 1개로 생각하시면 됩니다.
+           키를 더 늘리려면 <b>다른 구글 계정</b>에서 새로 발급받아야 합니다.</p>
+      </div>
+
+      <div class="gitem">
+        <b>2. API 키 1개 = 하루 키워드 3~5개</b>
+        <p>키워드 1개당 최대 100개 채널을 수집하는데, 그 정도가 키 하나의 하루 한도에 딱 맞습니다.
+           더 넣으면 <b>뒷부분 키워드는 한도가 떨어져 수집되지 않습니다.</b></p>
+      </div>
+
+      <div class="gitem">
+        <b>3. 하루에 한 번만 실행하세요</b>
+        <p>사용 한도는 하루 단위로 초기화됩니다. 같은 날 여러 번 돌려도 그날 모을 수 있는 총량은 늘지 않습니다.</p>
+      </div>
+
+      <div class="gitem">
+        <b>4. 키워드를 많이 돌리고 싶다면</b>
+        <p>키워드 3~5개씩 담은 텍스트 파일을 여러 개 만들고, <b>파일 개수만큼 API 키</b>를 준비하세요.
+           2단계에서 파일을 여러 개 한 번에 올릴 수 있습니다.</p>
+        <p class="gex">예) 키워드 파일 3개 → 키워드 9~15개 → API 키 3개 필요 → 구글 계정 3개 필요</p>
+      </div>
+
+      <div class="gitem">
+        <b>5. 같은 채널이 두 번 나오지 않습니다</b>
+        <p>한 번 확인한 채널은 기록해 두기 때문에, 계속 사용하시면 <b>처음이 결과가 가장 많고</b>
+           이후에는 새로 생긴 채널만 쌓여 점점 줄어듭니다. 고장이 아니라 정상입니다.</p>
+        <p><b>기록은 사용하는 사람마다 따로 쌓입니다.</b> 다른 분이 같은 키워드로 돌리면
+           그분에게는 처음이므로 같은 채널이 나올 수 있습니다.</p>
+        <p class="gex" id="dataTip" hidden>이어서 쓰고 싶다면 → 쓰던 PC의 data 폴더를 통째로 복사해 덮어쓰면 기록이 이어집니다.</p>
+      </div>
+
+      <div class="gitem">
+        <b>6. OpenAI 키는 선택입니다</b>
+        <p>넣으면 AI가 영상 자막까지 확인해 판별 정확도가 크게 올라가지만 <b>사용료가 발생합니다.</b>
+           비워두면 무료로 동작하며, 대신 관련 없는 채널이 조금 더 섞입니다.</p>
+      </div>
+
+      <div class="gitem">
+        <b>7. 수집 결과는 사람의 검수가 반드시 필요합니다</b>
+        <p>AI가 걸러내긴 하지만 <b>100% 강의 채널이라고 볼 수 없습니다.</b>
+           연락처도 채널 소개글에서 자동으로 뽑아낸 것이라, 담당자가 아닌 주소가
+           섞여 있을 수 있습니다.</p>
+        <p><b>실제로 연락하시기 전에 반드시 채널을 직접 확인해 주세요.</b></p>
+      </div>
+      </div>
+    </details>
+  </section>
+
+  <div class="cols">
+  <div class="col">
+
+  <!-- 1. API 키 -->
+  <section class="card">
+    <h2><span class="step">1</span> API 키 등록</h2>
+    <p class="desc">입력한 키는 이 프로그램 안에만 저장되며, 다른 곳으로 전송되지 않습니다.</p>
+
+    <label>YouTube Data API 키</label>
+    <div id="ytKeys"></div>
+    <button class="small" type="button" onclick="addKey()">+ 키 추가</button>
+    <div class="hint">
+      키를 여러 개 넣으면 하루 수집량이 그만큼 늘어납니다. (키 1개당 하루 약 10,000 units)
+    </div>
+
+    <label>OpenAI API 키 <span style="font-weight:400;color:var(--muted)">— 선택</span></label>
+    <input type="password" id="openaiKey" placeholder="sk-proj-... (비워두면 AI 정밀 검수를 사용하지 않습니다)">
+    <div class="hint">AI 검수를 켜면 강의 채널 판별 정확도가 크게 올라가지만, OpenAI 사용료가 발생합니다.</div>
+
+    <details>
+      <summary>API 키 발급 방법 보기</summary>
+      <ol>
+        <li><b>YouTube</b> — <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a>에서 프로젝트 생성 → <i>YouTube Data API v3</i> 사용 설정 → 사용자 인증 정보에서 API 키 만들기</li>
+        <li><b>OpenAI</b> — <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a>에서 API 키 생성 (결제 수단 등록 필요)</li>
+      </ol>
+    </details>
+  </section>
+
+  <!-- 2. 키워드 -->
+  <section class="card">
+    <h2><span class="step">2</span> 키워드 입력</h2>
+    <p class="desc">
+      키워드 목록 하나가 <b>API 키 하나의 하루치</b>입니다. 목록 번호와 키 번호가 짝을 이룹니다.
+    </p>
+
+    <input type="file" id="kwFiles" accept=".txt,text/plain" multiple style="display:none" onchange="loadFiles(this)">
+    <input type="file" id="kwOne" accept=".txt,text/plain" style="display:none" onchange="loadOne(this)">
+    <button class="small" type="button" onclick="document.getElementById('kwFiles').click()">
+      📄 텍스트 파일 불러오기 — 여러 개 선택 가능
+    </button>
+    <span class="hint" id="kwTotal" style="margin-left:10px"></span>
+
+    <div class="note" id="kwAdvice" style="border-left-color:var(--ok); background:rgba(18,128,92,.08)">
+      키워드 1개당 최대 <b>100개</b> 채널을 수집하도록 설정되어 있습니다.
+      이 설정에서는 <b>목록 하나에 3~5개</b>가 하루 한도에 알맞습니다.
+    </div>
+
+    <details class="howto">
+      <summary><b>키워드는 한 줄에 하나씩 적습니다</b> &nbsp;— 작성 예시와 주의사항 보기</summary>
+      <div class="howrow">
+        <div>
+          <span class="tick ok">○ 이렇게</span>
+<pre>파이썬 자동화
+AI 에이전트
+블렌더</pre>
+        </div>
+        <div>
+          <span class="tick no">✕ 이렇게 하지 마세요</span>
+<pre>파이썬 자동화, AI 에이전트
+블렌더/모션그래픽
+"프리미어 프로"</pre>
+        </div>
+      </div>
+      <ul>
+        <li>쉼표(,)나 빗금(/)으로 나누지 말고 <b>줄바꿈(Enter)</b>으로 구분하세요.</li>
+        <li>따옴표나 특수기호는 넣지 마세요. 유튜브에 검색하듯 그대로 적으면 됩니다.</li>
+        <li>단어 사이 띄어쓰기는 괜찮습니다. (예: <code>생성형 AI 실무</code>)</li>
+        <li>빈 줄은 자동으로 무시하고, 같은 키워드가 중복되면 하나만 남깁니다.</li>
+      </ul>
+      <p class="hint" style="margin-top:8px">
+        텍스트 파일로 만들 때도 형식은 똑같습니다. 메모장에 한 줄에 하나씩 적고
+        <code>.txt</code>로 저장하세요. (한글이 깨지면 저장할 때 인코딩을 <b>UTF-8</b>로 선택)
+      </p>
+    </details>
+
+    <div id="groups"></div>
+
+    <div class="actions">
+      <button class="primary" type="button" onclick="saveConfig()">설정 저장</button>
+    </div>
+    <div class="msg" id="cfgMsg"></div>
+  </section>
+
+  <!-- 3. 수집 조건 -->
+  <section class="card">
+    <h2><span class="step">3</span> 수집 조건 <span class="optional">선택 — 그대로 두셔도 됩니다</span></h2>
+    <p class="desc">어떤 채널을 남길지 정하는 값입니다. 잘 모르시겠으면 손대지 않으셔도 됩니다.</p>
+
+    <div id="basicSet"></div>
+
+    <details style="margin-top:14px">
+      <summary>고급 설정 보기</summary>
+      <div id="advSet"></div>
+    </details>
+
+    <div class="actions">
+      <button class="primary" type="button" onclick="saveSettings()">조건 저장</button>
+      <button type="button" onclick="resetSettings()">기본값으로 되돌리기</button>
+    </div>
+    <div class="msg" id="setMsg"></div>
+  </section>
+
+  </div>
+  <div class="col colright">
+
+  <!-- 4. 실행 -->
+  <section class="card">
+    <h2><span class="step">4</span> 수집 실행</h2>
+    <p class="desc">키워드 수에 따라 수 분에서 수십 분이 걸립니다. 실행 중에는 이 창을 닫지 마세요.</p>
+
+    <div class="status">
+      <span id="progText">대기 중</span>
+      <span id="elapsed"></span>
+    </div>
+    <div class="bar"><i id="progBar"></i></div>
+
+    <pre class="log" id="log"></pre>
+
+    <div class="actions">
+      <button class="primary" id="runBtn" type="button" onclick="runCrawler()">수집 시작</button>
+      <button id="stopBtn" type="button" onclick="stopCrawler()" disabled>중단</button>
+    </div>
+    <div class="msg" id="runMsg"></div>
+
+    <div class="note">
+      수집은 유튜브의 일일 사용량 한도 안에서만 동작합니다. 한도를 다 쓰면 그 시점까지의 결과를 저장하고 자동으로 멈춥니다.
+    </div>
+  </section>
+
+  <!-- 4. 결과 -->
+  <section class="card">
+    <h2><span class="step">5</span> 결과 내려받기</h2>
+    <p class="desc">수집된 채널 정보를 파일로 저장합니다.</p>
+
+    <div class="big" id="newCount">—</div>
+    <div class="hint" id="newLabel">아직 수집을 실행하지 않았습니다.</div>
+
+    <table id="fileTable" style="display:none">
+      <thead><tr><th>파일</th><th style="text-align:right">신규</th></tr></thead>
+      <tbody id="fileRows"></tbody>
+    </table>
+
+    <div class="actions">
+      <button class="primary" id="dlNew" type="button" onclick="location.href='/api/download/new'" disabled>이번 신규만 받기 (JSON)</button>
+      <button id="dlAll" type="button" onclick="location.href='/api/download/all'">전체 결과 받기 (ZIP)</button>
+    </div>
+
+    <div class="note" style="border-left-color:var(--warn); background:rgba(180,83,9,.08)">
+      연락하시기 전에 <b>채널을 직접 확인해 주세요.</b> AI 판별과 연락처 추출은 완벽하지 않아
+      강의 채널이 아니거나 담당자가 아닌 주소가 섞여 있을 수 있습니다.
+    </div>
+    <div class="hint" id="totalInfo"></div>
+  </section>
+
+  </div>
+  </div>
+
+  <footer>
+    수집 결과와 API 키는 이 프로그램 안에만 저장되며, 다른 곳으로 전송되지 않습니다.
+    <span id="localNote" hidden><br>종료하려면 함께 열린 검은 창을 닫으세요.</span>
+  </footer>
+</div>
+
+<script>
+var logOffset = 0, timer = null;
+
+/* ── 화면 밝기 ─────────────────────────────── */
+function setTheme(mode){
+  var root = document.documentElement;
+  if (mode === 'auto') root.removeAttribute('data-theme');
+  else root.setAttribute('data-theme', mode);
+  // 브라우저에 따라 저장이 막혀 있을 수 있으므로 실패해도 넘어갑니다.
+  try { localStorage.setItem('theme', mode); } catch (e) {}
+  ['auto', 'light', 'dark'].forEach(function(m){
+    var b = document.getElementById('th_' + m);
+    if (b) b.className = (m === mode ? 'on' : '');
+  });
+}
+(function initTheme(){
+  var saved = 'auto';
+  try { saved = localStorage.getItem('theme') || 'auto'; } catch (e) {}
+  setTheme(saved);
+})();
+
+/* ── 처음 사용 안내: 접은 상태를 기억합니다 ─── */
+function rememberGuide(){
+  try { localStorage.setItem('guideOpen', document.getElementById('guideBox').open ? '1' : '0'); } catch (e) {}
+}
+(function initGuide(){
+  try {
+    if (localStorage.getItem('guideOpen') === '0') {
+      document.addEventListener('DOMContentLoaded', function(){
+        var g = document.getElementById('guideBox');
+        if (g) g.open = false;
+      });
+    }
+  } catch (e) {}
+})();
+
+/* ── 서버 연결 상태 ────────────────────────── */
+/* index.html 을 탐색기에서 더블클릭해 연 경우(file://)에는
+   프로그램과 통신할 수 없습니다. 원인이 다르므로 안내 문구도 따로 보여줍니다. */
+var IS_FILE = (location.protocol === 'file:');
+/* 내 PC에서 직접 켠 경우에만 의미가 있는 안내(폴더 복사, 검은 창 등)를 가려 줍니다.
+   원격 호스트에서 띄운 경우에는 맞지 않는 설명이기 때문입니다. */
+var IS_LOCAL = IS_FILE ||
+  location.hostname === '127.0.0.1' || location.hostname === 'localhost';
+
+(function showLocalOnly(){
+  document.addEventListener('DOMContentLoaded', function(){
+    if (!IS_LOCAL) return;
+    ['dataTip', 'localNote'].forEach(function(id){
+      var el = document.getElementById(id);
+      if (el) el.hidden = false;
+    });
+  });
+})();
+
+function setOffline(down){
+  var el = document.getElementById('offline');
+  if (el) el.hidden = !down;
+}
+
+var BANNER_HTML = '';
+
+function resetBanner(){
+  var el = document.getElementById('offline');
+  if (!el) return;
+  if (BANNER_HTML) el.innerHTML = BANNER_HTML;
+  el.className = 'offline';
+}
+
+function showConnecting(){
+  var el = document.getElementById('offline');
+  if (!el) return;
+  if (!BANNER_HTML) BANNER_HTML = el.innerHTML;
+  el.className = 'offline connecting';
+  el.innerHTML = '<b>프로그램에 연결하는 중입니다…</b> 잠시만 기다려 주세요.' +
+    '<span class="hint">준비되면 자동으로 화면이 채워집니다.</span>';
+  el.hidden = false;
+}
+
+function showFileWarning(){
+  var el = document.getElementById('offline');
+  if (!el) return;
+  el.innerHTML =
+    '<b>이 파일을 직접 열면 동작하지 않습니다.</b> ' +
+    '이 화면은 프로그램이 켜져 있을 때만 작동합니다. 먼저 프로그램을 실행해 주세요.' +
+    '<span class="hint">내 PC에서 쓰실 때는 같은 폴더의 <b>시작하기.bat</b> 을 실행하세요. ' +
+    '브라우저가 자동으로 열립니다. (이 파일을 직접 열 필요가 없습니다)</span>';
+  el.hidden = false;
+}
+/* 서버와의 통신을 한 곳에서 처리해, 연결이 끊기면 항상 안내가 뜨도록 합니다.
+   (예전에는 설정을 못 불러와도 화면이 그냥 비어 있어서 원인을 알 수 없었습니다) */
+function api(path, options){
+  return fetch(path, options).then(function(r){
+    setOffline(false);
+    return r.json().then(function(j){ return {ok: r.ok, j: j}; });
+  }).catch(function(e){
+    setOffline(true);
+    throw e;
+  });
+}
+
+/* ── 초기 로드 ─────────────────────────────── */
+function applyConfig(c){
+  var box = document.getElementById('ytKeys');
+  box.innerHTML = '';
+  var n = Math.max(c.youtube_count, 1);
+  for (var i = 0; i < n; i++){
+    addKey(c.youtube_keys[i] || '');
+  }
+  if (c.has_openai) {
+    var o = document.getElementById('openaiKey');
+    o.value = ''; o.placeholder = '저장됨 (' + c.openai_key + ') — 바꾸려면 새로 입력';
+  }
+  // 저장된 키워드 목록 수가 키 수보다 많으면 칸을 더 만들어 줍니다.
+  var groups = c.keyword_groups || [];
+  while (document.getElementById('ytKeys').children.length < groups.length) addKey('');
+  syncGroups(groups);
+}
+
+/* 프로그램이 켜지는 데 1~2초 걸립니다.
+   화면이 먼저 열리는 경우 한 번 실패했다고 포기하면 고장난 것처럼 보이므로,
+   준비될 때까지 조용히 다시 시도합니다. */
+var connectTries = 0;
+var MAX_CONNECT_TRIES = 40;   // 약 40초
+
+function connect(){
+  api('/api/config').then(function(res){
+    connectTries = 0;
+    setOffline(false);
+    resetBanner();
+    applyConfig(res.j);
+    loadSettings();
+    refreshSummary();
+    poll();
+  }).catch(function(){
+    connectTries++;
+    if (!document.querySelectorAll('#ytKeys .keyrow').length) addKey('');
+    if (connectTries < MAX_CONNECT_TRIES){
+      showConnecting();
+      setTimeout(connect, 1000);
+    } else {
+      resetBanner();
+      setOffline(true);
+      document.getElementById('progText').textContent = '연결 끊김';
+    }
+  });
+}
+
+function init(){
+  if (IS_FILE){
+    // 통신을 시도해도 무조건 실패하므로, 헛된 요청 대신 안내만 보여줍니다.
+    showFileWarning();
+    addKey('');
+    document.getElementById('basicSet').innerHTML =
+      '<div class="sethelp">프로그램을 실행한 뒤에 설정할 수 있습니다.</div>';
+    document.getElementById('progText').textContent = '프로그램이 실행되지 않았습니다';
+    return;
+  }
+  connect();
+}
+
+/* ── 수집 조건 ─────────────────────────────── */
+var SET_SPEC = [];
+
+function loadSettings(){
+  api('/api/settings').then(function(res){
+    SET_SPEC = res.j.spec;
+    renderSettings(res.j.values);
+  }).catch(function(){
+    document.getElementById('basicSet').innerHTML =
+      '<div class="sethelp">프로그램과 연결되지 않아 설정을 불러오지 못했습니다. ' +
+      '프로그램을 실행한 뒤 새로고침(F5) 해 주세요.</div>';
+  });
+}
+
+function renderSettings(values){
+  document.getElementById('basicSet').innerHTML = '';
+  document.getElementById('advSet').innerHTML = '';
+
+  SET_SPEC.forEach(function(s){
+    var box = document.getElementById(s.group === 'basic' ? 'basicSet' : 'advSet');
+    var v = values[s.key];
+    var div = document.createElement('div');
+    div.className = 'set';
+
+    var control;
+    if (s.type === 'bool'){
+      control = '<input type="checkbox" id="set_' + s.key + '"' + (v ? ' checked' : '') + '>';
+    } else if (s.type === 'int'){
+      control = '<input type="range" id="set_' + s.key + '" min="' + s.min + '" max="' + s.max +
+                '" step="' + (s.step || 1) + '" value="' + v +
+                '" oninput="onRange(\'' + s.key + '\')">' +
+                '<span class="setval" id="val_' + s.key + '"></span>';
+    } else if (s.type === 'text'){
+      control = '<input type="text" id="set_' + s.key + '" value="' + (v == null ? '' : v) +
+                '" placeholder="' + (s.placeholder || '') + '" style="max-width:220px">';
+    } else {
+      var opts = s.options.map(function(o){
+        return '<option value="' + o[0] + '"' + (o[0] === v ? ' selected' : '') + '>' + o[1] + '</option>';
+      }).join('');
+      control = '<select id="set_' + s.key + '">' + opts + '</select>';
+    }
+
+    div.innerHTML = '<div class="setrow"><label for="set_' + s.key + '">' + s.label + '</label>' +
+                    control + '</div><div class="sethelp">' + s.help + '</div>';
+    box.appendChild(div);
+    if (s.type === 'int') onRange(s.key);
+  });
+  updateKeywordAdvice();
+}
+
+function onRange(key){
+  var s = SET_SPEC.filter(function(x){return x.key === key})[0];
+  var n = parseInt(document.getElementById('set_' + key).value, 10);
+  var el = document.getElementById('val_' + key);
+  if (s.zero_is_none && n === 0) el.textContent = '제한 없음';
+  else el.textContent = n + (s.unit || '');
+  if (key === 'MAX_RESULTS_PER_KEYWORD') updateKeywordAdvice();
+}
+
+/* 2단계의 '목록당 몇 개가 적당한지' 안내를 현재 설정에 맞춰 다시 씁니다.
+   API 키 1개로 하루에 모을 수 있는 양이 대략 300~500개 채널이라,
+   '키워드당 최대 채널 수'를 바꾸면 적정 키워드 수도 함께 달라집니다.
+   (기본값 100개 -> 3~5개) */
+function updateKeywordAdvice(){
+  var box = document.getElementById('kwAdvice');
+  if (!box) return;
+  var el = document.getElementById('set_MAX_RESULTS_PER_KEYWORD');
+  var max = el ? (parseInt(el.value, 10) || 100) : 100;
+  var lo = Math.max(1, Math.round(300 / max));
+  var hi = Math.max(lo, Math.round(500 / max));
+  var range = (lo === hi) ? (lo + '개') : (lo + '~' + hi + '개');
+  box.innerHTML =
+    '키워드 1개당 최대 <b>' + max + '개</b> 채널을 수집하도록 설정되어 있습니다. ' +
+    '이 설정에서는 <b>목록 하나에 ' + range + '</b>가 하루 한도에 알맞습니다.' +
+    '<span class="hint" style="display:block;margin-top:4px">' +
+    '수집 개수는 <b>3단계 수집 조건</b>에서 바꿀 수 있습니다. ' +
+    '줄이면 키워드를 더 넣을 수 있고, 늘리면 더 적게 넣어야 합니다.</span>';
+}
+
+function collectSettings(){
+  var out = {};
+  SET_SPEC.forEach(function(s){
+    var el = document.getElementById('set_' + s.key);
+    if (!el) return;
+    if (s.type === 'bool') out[s.key] = el.checked;
+    else if (s.type === 'int') out[s.key] = parseInt(el.value, 10);
+    else out[s.key] = el.value;
+  });
+  return out;
+}
+
+function saveSettings(){
+  api('/api/settings', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({values: collectSettings()})
+  }).then(function(res){
+      showMsg('setMsg', res.j.message, res.ok && res.j.ok);
+      if (res.j.values) renderSettings(res.j.values);
+    }).catch(function(){
+      showMsg('setMsg', '프로그램과 연결되지 않아 저장하지 못했습니다. 프로그램을 실행한 뒤 다시 시도해 주세요.', false);
+    });
+}
+
+function resetSettings(){
+  api('/api/settings/reset', {method: 'POST'})
+    .then(function(res){
+      showMsg('setMsg', res.j.message, res.ok && res.j.ok);
+      if (res.j.values) renderSettings(res.j.values);
+    }).catch(function(){
+      showMsg('setMsg', '프로그램과 연결되지 않아 되돌리지 못했습니다.', false);
+    });
+}
+
+function refreshSummary(){
+  api('/api/summary').then(function(res){
+    var s = res.j;
+    document.getElementById('totalInfo').textContent =
+      '현재 보유: 파일 ' + s.files + '개 / 채널 ' + s.channels.toLocaleString() + '건';
+  }).catch(function(){});
+}
+
+/* ── 입력 ──────────────────────────────────── */
+function addKey(saved){
+  var box = document.getElementById('ytKeys');
+  var i = box.children.length + 1;
+  var row = document.createElement('div');
+  row.className = 'keyrow';
+  var ph = saved ? '저장됨 (' + saved + ') — 바꾸려면 새로 입력' : 'AIzaSy...';
+  row.innerHTML = '<span>' + i + '</span>' +
+    '<input type="password" placeholder="' + ph + '" data-saved="' + (saved ? '1' : '') + '">' +
+    '<button class="small" type="button" onclick="this.parentNode.remove();renumber()">삭제</button>';
+  box.appendChild(row);
+  syncGroups();   // 키가 늘면 담당 키워드 목록 칸도 함께 늘어납니다.
+}
+function renumber(){
+  var rows = document.querySelectorAll('#ytKeys .keyrow');
+  for (var i = 0; i < rows.length; i++) rows[i].querySelector('span').textContent = i + 1;
+  syncGroups();
+}
+
+/* ── 키워드 목록 (API 키 1개 = 목록 1개) ───── */
+function keyCount(){ return document.getElementById('ytKeys').children.length; }
+
+function syncGroups(preset){
+  var box = document.getElementById('groups');
+  var kept = preset || getGroups();     // 화면에 이미 입력된 내용은 유지
+  var n = Math.max(keyCount(), 1);
+  box.innerHTML = '';
+  for (var i = 0; i < n; i++){
+    var div = document.createElement('div');
+    div.className = 'group';
+    div.innerHTML =
+      '<div class="grouphead">' +
+        '<b>키워드 목록 ' + (i + 1) + '</b>' +
+        '<span class="tag">API 키 ' + (i + 1) + '번 담당</span>' +
+        '<button class="small" type="button" onclick="pickOne(' + i + ')">파일 불러오기</button>' +
+        '<span class="cnt"></span>' +
+      '</div>' +
+      '<textarea placeholder="파이썬 자동화&#10;AI 에이전트&#10;코딩 입문" oninput="countAll()"></textarea>';
+    box.appendChild(div);
+    if (kept[i] && kept[i].length) div.querySelector('textarea').value = kept[i].join('\n');
+  }
+  countAll();
+}
+
+function getGroups(){
+  var out = [];
+  var areas = document.querySelectorAll('#groups textarea');
+  for (var i = 0; i < areas.length; i++){
+    out.push(areas[i].value.split('\n')
+      .map(function(s){return s.trim()})
+      .filter(function(s){return s.length > 0}));
+  }
+  return out;
+}
+
+function countAll(){
+  var groups = getGroups(), total = 0;
+  var cnts = document.querySelectorAll('#groups .cnt');
+  for (var i = 0; i < groups.length; i++){
+    var n = groups[i].length;
+    total += n;
+    if (!cnts[i]) continue;
+    if (!n){ cnts[i].textContent = ''; cnts[i].className = 'cnt'; continue; }
+    cnts[i].textContent = n + '개 · 최대 ' + (n * 100) + '개 채널' + (n > 5 ? ' — 권장 3~5개' : '');
+    cnts[i].className = n > 5 ? 'cnt over' : 'cnt';
+  }
+  document.getElementById('kwTotal').textContent =
+    total ? '전체 ' + total + '개 키워드' : '';
+}
+
+/* 여러 파일을 한 번에 불러오면 파일 하나가 목록 하나가 됩니다. */
+function loadFiles(input){
+  var files = Array.prototype.slice.call(input.files || []);
+  if (!files.length) return;
+  files.sort(function(a, b){ return a.name.localeCompare(b.name, 'ko'); });
+
+  while (keyCount() < files.length) addKey('');
+  syncGroups();
+
+  var done = 0, texts = new Array(files.length);
+  files.forEach(function(f, i){
+    var reader = new FileReader();
+    reader.onload = function(e){
+      texts[i] = e.target.result.replace(/\r\n/g, '\n').trim();
+      if (++done === files.length){
+        var areas = document.querySelectorAll('#groups textarea');
+        for (var k = 0; k < texts.length; k++) if (areas[k]) areas[k].value = texts[k];
+        countAll();
+        showMsg('cfgMsg', '파일 ' + files.length + '개를 목록 ' + files.length + '개로 불러왔습니다. 확인 후 [설정 저장]을 눌러 주세요.', true);
+      }
+    };
+    reader.readAsText(f, 'UTF-8');
+  });
+  input.value = '';
+}
+
+var pickTarget = 0;
+function pickOne(i){ pickTarget = i; document.getElementById('kwOne').click(); }
+function loadOne(input){
+  var f = input.files[0];
+  if (!f) return;
+  var reader = new FileReader();
+  reader.onload = function(e){
+    var areas = document.querySelectorAll('#groups textarea');
+    if (areas[pickTarget]) areas[pickTarget].value = e.target.result.replace(/\r\n/g, '\n').trim();
+    countAll();
+  };
+  reader.readAsText(f, 'UTF-8');
+  input.value = '';
+}
+
+/* ── 설정 저장 ─────────────────────────────── */
+function showMsg(id, text, ok){
+  var el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'msg show ' + (ok ? 'ok' : 'err');
+}
+function saveConfig(){
+  var inputs = document.querySelectorAll('#ytKeys input');
+  var keys = [], usable = 0;
+  for (var i = 0; i < inputs.length; i++){
+    var v = inputs[i].value.trim();
+    // 빈 칸은 "기존에 저장된 키를 그대로 둔다"는 뜻으로 서버가 처리합니다.
+    keys.push(v);
+    if (v || inputs[i].dataset.saved) usable++;
+  }
+  if (!usable){ showMsg('cfgMsg', 'YouTube API 키를 입력해 주세요.', false); return; }
+
+  var groups = getGroups();
+  var total = 0;
+  for (var g = 0; g < groups.length; g++) total += groups[g].length;
+  if (!total){ showMsg('cfgMsg', '키워드를 1개 이상 입력해 주세요.', false); return; }
+
+  api('/api/config', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      youtube_keys: keys,
+      openai_key: document.getElementById('openaiKey').value.trim(),
+      keyword_groups: groups
+    })
+  }).then(function(res){ showMsg('cfgMsg', res.j.message, res.ok && res.j.ok); })
+    .catch(function(){
+      showMsg('cfgMsg', '프로그램과 연결되지 않아 저장하지 못했습니다. 프로그램을 실행한 뒤 다시 시도해 주세요.', false);
+    });
+}
+
+/* ── 실행 ──────────────────────────────────── */
+function runCrawler(){
+  document.getElementById('log').textContent = '';
+  logOffset = 0;
+  document.getElementById('runMsg').className = 'msg';
+  api('/api/run', {method: 'POST'})
+    .then(function(res){
+      if (!res.ok || !res.j.ok){ showMsg('runMsg', res.j.message, false); return; }
+      setButtons(true);
+      poll();
+    }).catch(function(){
+      showMsg('runMsg', '프로그램과 연결되지 않아 시작하지 못했습니다.', false);
+    });
+}
+function stopCrawler(){
+  api('/api/stop', {method: 'POST'})
+    .then(function(res){ showMsg('runMsg', res.j.message, false); })
+    .catch(function(){ showMsg('runMsg', '프로그램과 연결되지 않았습니다.', false); });
+}
+function setButtons(running){
+  document.getElementById('runBtn').disabled = running;
+  document.getElementById('stopBtn').disabled = !running;
+  document.getElementById('runBtn').textContent = running ? '수집 중...' : '수집 시작';
+}
+
+function poll(){
+  fetch('/api/log?offset=' + logOffset).then(function(r){return r.json()}).then(function(d){
+    setOffline(false);
+    if (d.lines.length){
+      var box = document.getElementById('log');
+      var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+      box.textContent += d.lines.join('\n') + '\n';
+      if (atBottom) box.scrollTop = box.scrollHeight;
+      logOffset = d.offset;
+    }
+    var p = d.progress || {current: 0, total: 0, keyword: ''};
+    if (p.total > 0){
+      var pct = Math.round(p.current / p.total * 100);
+      document.getElementById('progBar').style.width = pct + '%';
+      document.getElementById('progText').textContent =
+        p.current + ' / ' + p.total + '  ·  ' + p.keyword;
+    }
+    if (d.elapsed !== null && d.elapsed !== undefined){
+      var m = Math.floor(d.elapsed / 60), s = d.elapsed % 60;
+      document.getElementById('elapsed').textContent = m + '분 ' + s + '초';
+    }
+    setButtons(d.running);
+
+    if (d.running){
+      timer = setTimeout(poll, 1000);
+    } else {
+      if (d.result) finish(d);
+      if (timer){ clearTimeout(timer); timer = null; }
+    }
+  }).catch(function(){
+    setOffline(true);
+    document.getElementById('progText').textContent = '연결 끊김';
+    setButtons(false);
+  });
+}
+
+function finish(d){
+  var r = d.result;
+  document.getElementById('newCount').textContent = r.total.toLocaleString() + '건';
+  document.getElementById('progBar').style.width = '100%';
+
+  var label, msgOk = true, msgText;
+
+  if (d.stopped){
+    label = '사용자가 중단했습니다. 그때까지의 결과는 저장되어 있습니다.';
+    msgText = '중단되었습니다.'; msgOk = false;
+  } else if (d.exit_code !== 0){
+    label = '오류로 종료되었습니다. 위 로그를 확인해 주세요.';
+    msgText = '수집이 정상적으로 끝나지 않았습니다.'; msgOk = false;
+  } else if (r.hint){
+    // 안내 문구가 붙었다는 것은 설정이나 한도에 문제가 있다는 뜻입니다.
+    // 크롤러는 API 키가 틀려도 "성공"으로 집계하고 정상 종료하므로,
+    // 실패 개수가 아니라 이 안내 문구를 기준으로 판단합니다.
+    label = '설정을 확인해 주세요.';
+    msgText = (r.total > 0 ? '신규 ' + r.total + '건을 수집했지만 문제가 있습니다. ' : '') + r.hint;
+    msgOk = false;
+  } else if (r.total === 0){
+    label = '정상적으로 끝났지만 새로 수집된 채널은 없습니다.';
+    msgText = '수집 완료 — 신규 0건' + (r.hint ? '. ' + r.hint : '');
+  } else {
+    label = '이번 실행에서 새로 수집된 채널 수입니다.';
+    msgText = '수집 완료 — 신규 ' + r.total + '건';
+  }
+  document.getElementById('newLabel').textContent = label;
+  showMsg('runMsg', msgText, msgOk);
+  document.getElementById('progText').textContent = '완료';
+
+  var tbody = document.getElementById('fileRows');
+  tbody.innerHTML = '';
+  if (r.files && r.files.length){
+    for (var i = 0; i < r.files.length; i++){
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + r.files[i].file + '</td><td class="num">+' + r.files[i].count + '</td>';
+      tbody.appendChild(tr);
+    }
+    document.getElementById('fileTable').style.display = '';
+  } else {
+    document.getElementById('fileTable').style.display = 'none';
+  }
+  document.getElementById('dlNew').disabled = (r.total === 0);
+  refreshSummary();
+}
+
+init();
+</script>
+</body>
+</html>

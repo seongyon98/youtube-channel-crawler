@@ -1,0 +1,42 @@
+# ── 비밀 정보 ────────────────────────────────────────────
+# API 키가 평문으로 들어갑니다. 절대 커밋하지 마세요.
+.env
+!.env.example
+
+# ── 수집 결과 및 개인정보 ────────────────────────────────
+# 수집 결과에는 채널 운영자의 이메일·전화번호 등 개인정보가 포함됩니다.
+# 저장소에는 폴더 구조만 남기고 내용물은 전부 제외합니다.
+data/*
+!data/.gitkeep
+!data/exclusion_sources/
+data/exclusion_sources/*
+!data/exclusion_sources/.gitkeep
+!data/exclusion_sources/example_mail_list.json
+
+# ── 운영 중 생성되는 파일 ────────────────────────────────
+keywords/*
+!keywords/.gitkeep
+!keywords/keywords_1.txt.example
+logs/
+*.log
+.crawler.lock
+my_name.txt
+
+# ── Python ───────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+venv/
+env/
+ENV/
+.venv/
+
+# ── IDE / OS ─────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
